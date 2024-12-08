@@ -1,0 +1,89 @@
+//Microkorg CC controller with CC number display
+
+#include <MIDI.h>           // Include the MIDI library
+#include <SevSeg.h>         // Include the 7-segment display library
+
+// Create a default MIDI instance
+MIDI_CREATE_DEFAULT_INSTANCE();  
+
+SevSeg sevseg;                   // Create an instance of the SevSeg class
+
+// Constants
+const int muxCount = 3;      // Number of multiplexers (adjusted to 3)
+const int muxPins = 16;      // Number of inputs per multiplexer (for 16-input MUX)
+
+// Multiplexer control pins
+const int muxControlPins[] = {2, 3, 4, 5}; // 4 control pins for 16 inputs (0000 to 1111)
+
+// Array of custom CC numbers (length 40 for 40 inputs)
+const int ccNumbers[40] = {
+  5, 77, 14, 15, 78, 82, 18, 19, 20, 21, 22, 83, 74, 71, 79, 85, 
+  23, 24, 25, 26, 7, 10, 92, 73, 75, 70, 72, 87, 27, 88, 76, 28, 
+  29, 30, 31, 12, 93, 13, 94
+};
+
+// Variables
+int potValues[muxCount * muxPins]; // Array to store potentiometer readings
+const int muxAnalogPins[muxCount] = {A0, A1, A2}; // Assign analog pins for each multiplexer
+
+// Function to read multiplexer inputs
+int readMux(int muxIndex, int inputIndex) {
+  // Set the multiplexer control pins to the binary equivalent of the inputIndex
+  for (int i = 0; i < 4; i++) { // 4 control pins for 16 inputs
+    digitalWrite(muxControlPins[i], bitRead(inputIndex, i));
+  }
+  // Return the analog value of the selected mux input
+  return analogRead(muxAnalogPins[muxIndex]); // Read from the specific mux analog pin
+}
+
+// Setup function
+void setup() {
+  // Initialize the control pins as outputs
+  for (int i = 0; i < 4; i++) { // 4 control pins
+    pinMode(muxControlPins[i], OUTPUT);
+  }
+  
+  // Initialize MIDI communication
+  MIDI.begin(MIDI_CHANNEL_OMNI);  // Begin MIDI on all channels
+
+  // Initialize 7-segment display
+  byte numDigits = 2; // Number of digits to display (0-99 fits in 2 digits)
+  byte digitPins[] = {6, 7}; // Digital pins connected to the digit pins
+  byte segmentPins[] = {8, 9, 10, 11, 12, 13, 14}; // Digital pins connected to the segment pins
+  sevseg.begin(COMMON_CATHODE, numDigits, digitPins, segmentPins); // Adjust COMMON_ANODE or COMMON_CATHODE as needed
+  sevseg.setBrightness(100); // Set brightness (0-100)
+}
+
+// Main loop
+void loop() {
+  // Read all potentiometers
+  for (int i = 0; i < muxCount; i++) {
+    for (int j = 0; j < muxPins; j++) {
+      int potValue = readMux(i, j);
+      
+      // Convert analog value (0-1023) to MIDI (0-127)
+      int midiValue = map(potValue, 0, 1023, 0, 127);
+
+      // Get the corresponding CC number from the array
+      int index = i * muxPins + j;
+      int ccNumber = ccNumbers[index];  // Fetch the custom CC number
+
+      // Send a MIDI Control Change message only if the value has changed
+      if (potValues[index] != midiValue) {
+        potValues[index] = midiValue;
+        MIDI.sendControlChange(ccNumber, midiValue, 1);  // Sending on channel 1 with custom CC number
+
+        // Display the current CC number on the 7-segment display
+        displayOn7Segment(ccNumber); 
+      }
+      
+      delay(10); // Small delay to stabilize reading
+    }
+  }
+}
+
+// Function to display the CC number on the 7-segment display
+void displayOn7Segment(int ccNumber) {
+  sevseg.setNumber(ccNumber); // Set the CC number to be displayed
+  sevseg.refreshDisplay();  // Refresh the display to show the new value
+}
